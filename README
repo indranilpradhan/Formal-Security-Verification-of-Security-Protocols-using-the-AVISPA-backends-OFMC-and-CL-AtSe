@@ -1,0 +1,7 @@
+Implementation of 'A temporal-credential-based mutual authentication and key agreement scheme for wireless sensor networks' protocol. The prtocol has been Simulated using the OFMC and CL-AtSe backends. It returns SAFE.
+Fours agents has been used Generate, User, Sensor and Gateway node.
+
+Generate is used to generate password for user and securely send the password to user role and gateway node.
+User and sensor does registration with gate way.
+User securely logs in.
+Gateway node generates session key for sensor and user and securely send it to the sensor and user.

@@ -1,0 +1,277 @@
+
+%%A temporal-credential-based mutual authentication and key agreement scheme for wireless sensor networks
+%% Roles
+%%	-user (AGENT : User)
+%%  -generate password (AGENT : Gen)
+%%  -gateway node (AGENT: Gwn)
+%%  -smart device (AGENT :Sensor)
+%%  -session
+%%  -environment
+%%  -goal
+
+role generate(
+	Gen, User, Gwn, Sensor: agent,
+	SND, RCV: channel(dy),
+    H: hash_func)
+
+played_by Gen
+def=
+local 
+	  State: nat,
+      SKgenu, SKgeng: symmetric_key,
+      PWD: text
+    const sp1, sp2: protocol_id
+
+init  State := 0
+transition
+
+1. State = 0 /\ RCV(start) =|> 
+ State' := 1 /\ PWD' := new()
+ %%Send Password to user through a secure channel
+             /\ SND({PWD'}_SKgenu)
+ %%Send Password to gateway node through a secure channel
+             /\ SND({PWD'}_SKgeng)
+end role
+
+%%Role user
+role user(
+	Gen,User,Gwn,Sensor	: agent,
+	SND,RCV : channel(dy),
+	H	: hash_func
+	)
+
+played_by User def=
+	
+	local
+		State : nat,
+		SKgwnu,SKgenu,SKgeng : symmetric_key,
+		Ti,Tdel 	: nat,
+		SId,PWS,UID,PWD,TS1,TS4,TS6,TE,Kgwnu,PWD1,VI,PTC,TC,DID,C,K,PKS,P,C1,PKS1,Kj,KEYij,H1,H2 		: text
+
+	const
+		sp2,u_g_ts1,g_u_te,u_g_ts4,u_g_k,s_u_ts6,s_u_kj:protocol_id	
+
+	init
+		State:=0
+
+	transition
+
+	%%User Registration
+
+		1. State  = 0 /\ RCV({PWD'}_SKgenu) =|>
+		   State':=1  /\ TS1' := new()
+					  /\ PWD1' := H(PWD')
+					  /\ VI' := H(TS1'.PWD1')
+					  /\ SND(TS1'.UID'.VI')
+					  /\ witness(User,Gwn,u_g_ts1,TS1')
+
+		2. State  = 1 /\ RCV({UID'.H(H(PWD1')).TE'.PTC'}_SKgwnu) =|>
+		   State':= 2 /\ secret({Kgwnu},sp2, {Gwn})
+		   			  /\ request(Gwn,User,g_u_te,TE')
+		   			  /\ H1' := H(H(PWD1'))
+		   			  /\ H2' := H(H(PWD'))
+	%%Login and authentication phase
+		   			  /\ TC' := xor(PTC',H(PWD))
+		   			  /\ TS4' := new()
+		   			  /\ DID' := xor(UID', H(TC'.TS4'))
+		   			  /\ C' := H(xor(H(UID'.TS4'),TC'))
+		   			  /\ K' := new()
+		   			  /\ PKS' := xor(K',H(TC'.TS4'.0))
+		   			  /\ P' := H(UID'.TE')
+		   			  /\ SND(DID'.C'.PKS'.TS4'.TE'.P')
+		   			  /\ witness(User,Gwn,u_g_ts4,TS4')
+		   			  /\ witness(User,Gwn,u_g_k, K')
+
+		3. State  = 2 /\ RCV(SId'.TS6'.C1'.PKS1') =|>
+		   State':= 3 /\ request(Sensor,User,s_u_ts6,TS6')
+		   			  /\ request(Sensor,User,s_u_kj, Kj')	
+
+	%%Receive Session key 	   			  
+		4. State  = 3 /\ RCV(H(xor(K', Kj'))) =|>
+		   State':= 4 /\ KEYij' := H(xor(K',Kj'))
+
+end role
+
+%%Role gateway node
+role gateway(
+	Gen,User,Gwn,Sensor	: agent,
+	SND,RCV : channel(dy),
+	H 	: hash_func
+%	Kgwnu, Kgwns	: public_key,
+	)
+
+played_by Gwn def=
+
+	local
+		State : nat,
+		SKgwnu,SKgenu,SKgeng : symmetric_key,
+		Tdel,Tchckgwn,Ti,Tgwn	: nat,
+		PWS,SId,UID,PWD,TS4,TS6,TS5,TS3,TS2,TE,TS1,Kgwns,Kgwnu,VI,VI1,P,TC,PTC,VI2,VI3,TC1,REG,P1,DID,C,PKS,C1,K,DIDgwn,Cgwn,PKSgwn,C1j,PKS1,Kj,KEYij	: text
+
+
+	const
+		sp2,sp3,sp4,g_u_te,u_g_ts1,g_s_ts3,s_g_ts2,g_s_ts5,u_g_ts4,u_g_k,s_g_ts6,s_g_kj:protocol_id
+
+	init
+		State := 0
+
+	transition
+
+	%% REceive request for registration from user
+
+		1. State  = 0 /\  RCV({PWD'}_SKgeng) =|>
+		   State':= 1 /\ TE' := new()
+
+		2. State  = 1 /\ RCV(TS1'.UID'.VI') =|>
+		   State':= 2 /\ VI1' := H(TS1'.H(PWD'))
+		   			  /\ TE' := new()
+		   			  /\ P' := H(UID'.TE')
+		   			  /\ TC' := H(Kgwnu.P'.TE')
+		   			  /\ PTC' := xor(TC', H(PWD'))
+		   			  /\ secret({Kgwnu}, sp2, {Gwn})
+		   			  /\ SND({UID'.H(H(PWD')).TE'.PTC'}_SKgwnu)
+		   			  /\ witness(Gwn,User,g_u_te,TE') 
+		   			  /\ request(User,Gwn,u_g_ts1,TS1')
+
+    %%Receive request for registration from Sensor
+		3. State  = 2 /\ RCV(SId'.TS2'.VI2') =|>
+		   State':= 3 /\ secret({PWS}, sp3, {Sensor, Gwn})
+		   	 		  /\ VI3' := H(TS2'.H(PWS'))
+		   	 		  /\ TC1' := H(Kgwns.SId')
+		   	 		  /\ TS3' := new()
+		   	 		  /\ REG' := xor(H(H(PWS').TS3'),TC1')
+		   	 		  /\ SND(TS3'.REG')
+		   	 		  /\ secret({Kgwns}, sp4, {Gwn})
+		   	 		  /\ witness(Gwn,Sensor,g_s_ts3,TS3')
+		   	 		  /\ request(Sensor,Gwn,s_g_ts2,TS2')
+    %%Login and authentication phase
+		4. State  = 3 /\ RCV(DID'.C'.PKS'.TS4'.TE'.P') =|>
+		   State':= 4 /\ UID' := xor(DID',H(H(inv(Kgwnu).P'.TE').TS4')) 
+		   			  /\ TC' := H(Kgwnu.UID')
+		   			  /\ C1' := H(xor(H(UID'.TS4'),TC'))
+		   			  /\ K' := xor(PKS', H(TC'.TS4'.0))
+		   			  /\ TC1' := H(Kgwns.SId') 
+		   			  /\ TS5' := new()
+		   			  /\ DIDgwn' := xor(UID',H(DID'.TC1'.TS5'))
+		   			  /\ Cgwn' := H(UID'.TC1'.TS5')
+		   			  /\ PKSgwn' := xor(K',H(TC1'.TS5'))
+		   			  /\ SND(TS5'.DID'.DIDgwn'.Cgwn'.PKSgwn')
+		   			  /\ witness(Gwn,Sensor,g_s_ts5,TS5')
+		   			  /\ request(User,Gwn,u_g_ts4,TS4')
+		   			  /\ request(User,Gwn,u_g_k, K')
+
+    %% send session key via public channel to user and sensor
+		5. State  = 4 /\ RCV(SId'.TS6'.C1'.PKS1') =|>
+		   State':= 5 /\ Kj' := xor(PKS1', H(K'.TS6'))
+		   			  /\ KEYij' := H(xor(K',Kj'))
+		   			  /\ SND(KEYij)
+		   			  /\ request(Sensor,Gwn,s_g_ts6, TS6')
+		   			  /\ request(Sensor,Gwn,s_g_kj, Kj')
+
+end role
+
+%%Sensor role
+
+role sensor(
+	Gen,User,Gwn,Sensor	: agent,
+	SND,RCV : channel(dy),
+	H 	: hash_func
+	)
+
+played_by Sensor def=
+
+	local
+		State : nat,
+		Tgwn,Tdel,Tchckj: nat,
+		PWS,SId,Kgwns,TS6,TS5,TS3,TS2,TE,VI,TC1,DID,DIDgwn,Cgwn,PKSgwn,IDi,Cgwn1,Ki,Kj,C1,PKS1,REG,IDj,TCj,KEYij 	: text
+
+	const
+		sp3,sp4,s_g_ts2,g_s_ts3,s_u_ts6,s_u_kj,s_g_kj:protocol_id
+
+	init
+		State := 2
+
+	transition
+
+	%%Sensor Node registration
+		
+		1. State  = 2 /\ RCV(start) =|> 
+		   State':= 3 /\ TS2' := new()
+		   			  /\ VI' := H(TS2'.H(PWS'))
+		   			  /\ SND(SId'.TS2'.VI')
+		   			  /\ secret({PWS}, sp3, {Sensor, Gwn})
+		   			  /\ witness(Sensor,Gwn,s_g_ts2,TS2')
+
+		2. State  = 3 /\ RCV(TS3'.REG') =|>
+		   State':= 4 /\ secret({Kgwns}, sp4, {Gwn})
+		   			  /\ TC1' := xor(REG', H(H(PWS').TS3')) 
+		   			  /\ request(Gwn,Sensor,g_s_ts3,TS3')
+
+    %%Authentication between gateway and sensor
+		3. State  = 4 /\ RCV(TS5'.DID'.DIDgwn'.Cgwn'.PKSgwn') =|>
+		   State':= 5 /\ IDi' := xor(DIDgwn', H(DID'.TC1'.TS5'))
+		   			  /\ Cgwn1' := H(IDj'.TCj'.TS5')
+		   			  /\ Ki' := xor(PKSgwn',H(TC1'.TS5'))
+		   			  /\ TS6' := new()
+		   			  /\ Kj' := new()
+		   			  /\ C1' := H(Kj'.IDi'.SId'.TS6')
+		   			  /\ PKS1' := xor(Kj',H(Ki'.TS6'))
+		   			  /\ SND(SId'.TS6'.C1'.PKS1')
+		   			  /\ witness(Sensor,User,s_u_ts6,TS6')
+		   			  /\ witness(Sensor,User,s_u_kj,Kj')
+
+    %%Receive session key from gateway through public channel
+		4. State  = 5 /\ RCV(H(xor(Ki', Kj'))) =|>
+		   State' := 6 /\ KEYij' := H(xor(Ki', Kj'))
+		              /\ witness(Sensor,Gwn,s_g_ts6, TS6')
+		              /\ witness(Sensor,Gwn,s_g_kj, Kj')
+end role
+
+%%Sensor role
+role session(
+	Gen,User,Gwn,Sensor : agent,
+	H:hash_func)
+
+	def=
+		
+		local 
+			SNDU,RCVU,SNDG,RCVG,SNDS,RCVS: channel (dy)
+
+		composition
+			user(Gen,User,Gwn,Sensor,SNDU,RCVU,H)
+  			/\ gateway(Gen,User,Gwn,Sensor,SNDG,RCVG,H)
+  			/\ sensor(Gen,User,Gwn,Sensor,SNDS,RCVS,H)
+end role
+
+%%Role for environment
+role environment()
+	
+	def=
+
+		const 
+			a,b,c,d: agent,
+			u_g_ts4,u_g_k,sp2,g_u_te,u_g_ts1,g_s_ts5,s_g_ts6,sp3,sp4,s_g_ts2,g_s_ts3,s_u_ts6,s_u_kj,s_g_kj:protocol_id,
+			h:hash_func,
+			t1,t2,t3:text
+			%Kgwnu,Kgwns:public_key
+
+
+	intruder_knowledge = {a,b,c,t1,t2,t3}
+
+	composition
+		   session(a,b,c,d,h)
+		/\ session(a,i,c,d,h) 
+		/\ session(a,b,i,d,h)
+		/\ session(a,b,c,i,h)
+
+end role
+
+goal
+	secrecy_of sp2, sp3, sp4
+
+	authentication_on u_g_ts4, u_g_ts1, u_g_k
+	authentication_on g_u_te, g_s_ts3, g_s_ts5
+	authentication_on s_g_ts2, s_u_kj, s_u_ts6, s_g_ts6, s_g_kj
+end goal
+
+environment()
